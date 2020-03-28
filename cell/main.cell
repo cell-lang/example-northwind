@@ -1,0 +1,658 @@
+Int Main(String* args) {
+  northwind : Northwind;
+
+  if (|args| != 2 and |args| != 3) or (args(0) != "import" and args(0) != "load") {
+    Print("Usage: northwind (import | load) <input file or directory> [<output dataset file>]\n");
+    return 1;
+  }
+
+  if args(0) == "import" {
+    ImportCsvData(northwind, args(1));
+  }
+  else {
+    assert args(0) == "load";
+    ok = Load(northwind, args(1));
+    if not ok {
+      err_msg = Error(northwind);
+      Print("\n" & err_msg & "\n");
+      return 1;
+    }
+  }
+
+  if |args| == 3 {
+    ok = Save(northwind, args(2));
+    // data = Copy(northwind);
+    // ok = FileWrite(args(2), untag(_print_(data)));
+    assert ok;
+  }
+
+  RunQueries(northwind);
+
+  return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+RunQueries(Northwind northwind) {
+  PrintRegions(northwind);
+  PrintSortedEmployeesNames(northwind);
+  PrintOrdersSubtotals(northwind);
+  PrintShippedOrdersSubtotals(northwind);
+  PrintTotalSalesPerProductWithCategory(northwind);
+  PrintTotalSalesPerProductByCategory(northwind);
+  PrintAboveAveragePriceProducts(northwind);
+  PrintSalesByProductAndQuarter(northwind);
+  PrintSalesByCategoryProductAndQuarter(northwind);
+  PrintSalesByCategory(northwind);
+  PrintQuarterlyOrdersByProductCustomeYear(northwind);
+  PrintTopGrossingProductByCategory(northwind);
+  PrintMostRecentOrdersForDiscontinuedProducts(northwind);
+  PrintEmployeesDirectAndIndirectSales(northwind);
+  PrintPhoneNumbers(northwind);
+}
+
+PrintRegions(Northwind northwind) {
+  PrintReport(northwind.regions);
+}
+
+PrintSortedEmployeesNames(Northwind northwind) {
+  PrintReport(northwind.sorted_employees_names);
+}
+
+PrintOrdersSubtotals(Northwind northwind) {
+  PrintReport(northwind.orders_subtotals);
+}
+
+PrintShippedOrdersSubtotals(Northwind northwind) {
+  PrintReport(northwind.shipped_orders_subtotal);
+}
+
+PrintTotalSalesPerProductWithCategory(Northwind northwind) {
+  PrintReport(northwind.total_sales_per_product_with_category);
+  PrintReport(northwind.total_sales_per_product_with_category(`1997-01-01`, `1997-12-31`));
+}
+
+PrintTotalSalesPerProductByCategory(Northwind northwind) {
+  PrintReport(northwind.total_sales_per_product_by_category);
+}
+
+PrintAboveAveragePriceProducts(Northwind northwind) {
+  PrintReport(northwind.above_average_price_products);
+}
+
+PrintSalesByProductAndQuarter(Northwind northwind) {
+  PrintReport(northwind.sales_by_product_and_quarter(1997));
+}
+
+PrintSalesByCategoryProductAndQuarter(Northwind northwind) {
+  data = northwind.sales_by_category_product_and_quarter(1997);
+  data = ((c, ((p) & qs : p, qs <- pqs)) : c, pqs <- data);
+  PrintReport(data);
+}
+
+PrintSalesByCategory(Northwind northwind) {
+  PrintReport(northwind.sales_by_category(`1997-01-01`, `1997-12-31`));
+}
+
+PrintQuarterlyOrdersByProductCustomeYear(Northwind northwind) {
+  PrintReport(northwind.quarterly_orders_by_product_customer_year(`1997-01-01`, `1997-12-31`));
+
+  report = ((p, {
+    rows = ();
+    for c, yqs <- cyqs
+      for y, qs @ i <- yqs {
+        row = (if i == 0 then c else nothing, y) & qs;
+        rows = (rows | row);
+      }
+    return rows;
+  }) : p, cyqs <- northwind.quarterly_orders_by_product_customer_year);
+
+  PrintReport(report);
+}
+
+PrintTopGrossingProductByCategory(Northwind northwind) {
+  PrintReport(northwind.top_grossing_products_by_category(90));
+}
+
+PrintMostRecentOrdersForDiscontinuedProducts(Northwind northwind) {
+  report = ((p, {
+    rows = ();
+    for c, os <- cos
+      for o @ i <- os
+        rows = (rows | (if i == 0 then c else nothing) & o);
+    return rows;
+  }) : p, cos <- northwind.last_orders_for_discontinued_products);
+
+  PrintReport(report);
+}
+
+PrintEmployeesDirectAndIndirectSales(Northwind northwind) {
+  PrintReport(northwind.employees_sales);
+  PrintReport(northwind.sales_trees);
+}
+
+PrintPhoneNumbers(Northwind northwind) {
+  PrintReport(northwind.phone_numbers);
+
+  PrintReport((
+    (northwind.basic_info(any(northwind.phone_owners(p))) | p)
+    : _, p, _ <- northwind.phone_numbers
+  ));
+
+  PrintReport(
+    join((
+      ((desc, p, type) : desc, code, type <- northwind.phone_info(p))
+      : _, p, _ <- northwind.phone_numbers
+    ))
+  );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+ImportCsvData(Northwind northwind, String path) {
+  ReadCategories(northwind, path);
+  ReadSuppliers(northwind, path);
+  ReadRegions(northwind, path);
+  ReadTerritories(northwind, path);
+  ReadShippers(northwind, path);
+  ReadCustomers(northwind, path);
+  ReadEmployees(northwind, path);
+  ReadEmployeeTerritories(northwind, path);
+  ReadProducts(northwind, path);
+  ReadOrders(northwind, path);
+  ReadOrderDetails(northwind, path);
+}
+
+
+ReadCategories(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Categories.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_integer(content, idx);
+    idx = skip_semicolon(content, idx);
+    name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    description, idx = read_string(content, idx);
+    idx = skip_line(content, idx);
+
+    fail if not id :: Nat;
+
+    msg = add_category(id: id, name: name, description: description);
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+
+ReadSuppliers(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Suppliers.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_integer(content, idx);
+    idx = skip_semicolon(content, idx);
+    company_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    contact_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    contact_title, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    address, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    city, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    region_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    postal_code, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    country, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    phone, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    fax, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    home_page, idx = read_string(content, idx);
+    idx = next_line(content, idx);
+
+    fail if not id :: Nat;
+
+    msg = add_supplier(
+      id:            id,
+      company_name:  company_name,
+      contact_name:  contact_name,
+      contact_title: contact_title,
+      address:       address,
+      city:          city,
+      region_name:   region_name,
+      postal_code:   postal_code,
+      country:       country,
+      phone:         phone,
+      fax:           fax,
+      home_page:     home_page
+    );
+
+    ok = Send(northwind, msg);
+    if not ok {
+      err_msg = Error(northwind);
+      Print("\n" & err_msg & "\n");
+      Exit(1);
+      fail;
+    }
+    assert ok;
+  }
+}
+
+ReadRegions(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Region.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_integer(content, idx);
+    idx = skip_semicolon(content, idx);
+    description, idx = read_string(content, idx);
+    idx = skip_line(content, idx);
+
+    fail if not id :: Nat;
+
+    msg = add_region(id: id, description: trim(description));
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+ReadTerritories(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Territories.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id_str, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    description, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    region, idx = read_integer(content, idx);
+    idx = skip_line(content, idx);
+
+    id = match (_parse_(id_str))
+      success(n?) = n,
+      failure()   = undefined;
+
+    fail if not id :: Nat or not region :: Nat;
+
+    msg = add_territory(id: id, description: trim(description), region: region);
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+ReadShippers(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Shippers.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_integer(content, idx);
+    idx = skip_semicolon(content, idx);
+    company_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    phone, idx = read_string(content, idx);
+    idx = skip_line(content, idx);
+
+    fail if not id :: Nat;
+
+    msg = add_shipper(id: id, company_name: company_name, phone: phone);
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+ReadCustomers(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Customers.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    company_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    contact_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    contact_title, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    address, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    city, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    region_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    postal_code, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    country, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    phone, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    fax, idx = read_string(content, idx);
+    idx = next_line(content, idx);
+
+    msg = add_customer(
+      id:            id,
+      company_name:  company_name,
+      contact_name:  contact_name,
+      contact_title: contact_title,
+      address:       address,
+      city:          city,
+      region_name:   region_name,
+      postal_code:   postal_code,
+      country:       country,
+      phone:         phone,
+      fax:           fax
+    );
+
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+
+ReadEmployees(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Employees.csv");
+
+  report_hierarchy = [];
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_integer(content, idx);
+    idx = skip_semicolon(content, idx);
+    last_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    first_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    title, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    title_of_courtesy, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    birth_date, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    hire_date, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    address, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    city, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    region_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    postal_code, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    country, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    home_phone, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    extension, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    _, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    notes, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    reports_to, idx = read_integer(content, idx);
+    idx = skip_semicolon(content, idx);
+    photo_path, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    salary, idx = read_float(content, idx);
+    idx = next_line(content, idx);
+
+    fail if not id :: Nat or not reports_to :: Nat;
+
+    if reports_to != 0
+      report_hierarchy = _put_(report_hierarchy, id, reports_to);
+
+    msg = add_employee(
+      id:                id,
+      last_name:         last_name,
+      first_name:        first_name,
+      title:             title,
+      title_of_courtesy: title_of_courtesy,
+      birth_date:        parse_date(birth_date),
+      hire_date:         parse_date(hire_date),
+      address:           address,
+      city:              city,
+      region_name:       region_name,
+      postal_code:       postal_code,
+      country:           country,
+      home_phone:        home_phone,
+      extension:         extension,
+      notes:             notes,
+      // reports_to:        reports_to,
+      photo_path:        photo_path,
+      salary:            salary
+    );
+
+    ok = Send(northwind, msg);
+    if not ok {
+      err_msg = Error(northwind);
+      Print("\n" & err_msg & "\n");
+    }
+    assert ok;
+  }
+
+  ok = Send(northwind, set_reports_to(map: report_hierarchy));
+  assert ok;
+}
+
+ReadEmployeeTerritories(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/EmployeeTerritories.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    employee_id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    territory_id_str, idx = read_string(content, idx);
+    idx = skip_line(content, idx);
+
+    territory_id = match (_parse_(territory_id_str))
+      success(n?) = n,
+      failure()   = undefined;
+
+    fail if not territory_id :: Nat;
+
+    msg = assign_territory(employee_id: employee_id, territory_id: territory_id);
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+ReadProducts(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Products.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+
+    id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    product_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    supplier_id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    category_id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    quantity_per_unit, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    unit_price, idx = read_float(content, idx);
+    idx = skip_semicolon(content, idx);
+    units_in_stock, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    units_on_order, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    reorder_level, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    discontinued, idx = read_integer(content, idx);
+    idx = next_line(content, idx);
+
+    assert discontinued == 0 or discontinued == 1;
+
+    msg = add_product(
+      id:                id,
+      product_name:      product_name,
+      supplier_id:       supplier_id,
+      category_id:       category_id,
+      quantity_per_unit: quantity_per_unit,
+      unit_price:        unit_price,
+      units_in_stock:    units_in_stock,
+      units_on_order:    units_on_order,
+      reorder_level:     reorder_level,
+      discontinued:      discontinued != 0
+    );
+
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+ReadOrders(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/Orders.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    customer_id, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    employee_id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    order_date_str, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    required_date_str, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    shipped_date_str, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_via, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    freight, idx = read_float(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_name, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_address, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_city, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_region, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_postal_code, idx = read_string(content, idx);
+    idx = skip_semicolon(content, idx);
+    ship_country, idx = read_string(content, idx);
+    idx = next_line(content, idx);
+
+    order_date = parse_date(order_date_str);
+    required_date = parse_date(required_date_str);
+    shipped_date = if shipped_date_str != "" then parse_date(shipped_date_str) else nothing;
+
+    msg = add_order(
+      id:               id,
+      customer_id:      customer_id,
+      employee_id:      employee_id,
+      order_date:       order_date,
+      required_date:    required_date,
+      shipped_date:     shipped_date if shipped_date != nothing,
+      ship_via:         ship_via,
+      freight:          freight,
+      ship_name:        ship_name,
+      ship_address:     ship_address,
+      ship_city:        ship_city,
+      ship_region:      ship_region,
+      ship_postal_code: ship_postal_code,
+      ship_country:     ship_country
+    );
+
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+ReadOrderDetails(Northwind northwind, String path) {
+  content = ReadFileOrFail(path & "/OrderDetails.csv");
+
+  idx = skip_line(content, 0);
+  while idx < |content| {
+    order_id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    product_id, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    item_unit_price, idx = read_float(content, idx);
+    idx = skip_semicolon(content, idx);
+    quantity, idx = read_nat(content, idx);
+    idx = skip_semicolon(content, idx);
+    discount, idx = read_float(content, idx);
+    idx = next_line(content, idx);
+
+    msg = add_order_detail(
+      order_id:        order_id,
+      product_id:      product_id,
+      item_unit_price: item_unit_price,
+      quantity:        quantity,
+      discount:        discount
+    );
+
+    ok = Send(northwind, msg);
+    assert ok;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+Byte* ReadFileOrFail(String fname) {
+  res = FileRead(fname);
+  if res == nothing {
+    Print("File not found: " & fname & "\n");
+    fail;
+  }
+  content = value(res);
+  // Print("File " & fname & " successfully read. Size = " & _print_(|content|) & "\n");
+  return content;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+PrintReport(Report report) {
+  for l <- format(report) {
+    Print(l);
+    Print("\n");
+  }
+  Print("\n");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Nat skip_semicolon(Byte* content, Nat offset) = skip(content, offset, `;`);
+
+(Nat, Nat) read_nat(Byte* content, Nat offset) {
+  res = read_integer(content, offset);
+  fail if not res :: (Nat, Nat);
+  return res;
+}
+
+String trim(String str) {
+  len = length(str);
+  
+  first = 0;
+  while first < len and str[first] == ` `
+    first = first + 1;
+
+  last = len - 1;
+  while last >= 0 and str[last] == ` `
+    last = last - 1;
+
+  return if first <= last then substr(str, first, last - first + 1) else "";
+}
+
+
+Date parse_date(String str) {
+  bytes = untag(str);
+  fail if not bytes :: Byte*;
+  year, idx = read_integer(bytes, 0);
+  idx = skip(bytes, idx, `-`);
+  month, idx = read_integer(bytes, idx);
+  idx = skip(bytes, idx, `-`);
+  day, idx = read_integer(bytes, idx);
+  return value_unsafe(date(year, month, day));
+}

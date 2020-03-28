@@ -1,0 +1,206 @@
+Northwind.add_category(id: Nat, name: String, description: String) {
+  insert category(:category_id(this.id))
+    name = this.name,
+    description = this.description;
+}
+
+type AddSupplierMsg = add_supplier(
+  id            : Nat,
+  company_name  : String,
+  contact_name  : String,
+  contact_title : String,
+  address       : String,
+  city          : String,
+  region_name   : String,
+  postal_code   : String,
+  country       : String,
+  phone         : String,
+  fax           : String,
+  home_page     : String
+);
+
+Northwind.AddSupplierMsg {
+  insert supplier(:supplier_id(this.id))
+    company_name  = this.company_name,
+    contact_name  = this.contact_name,
+    contact_title = this.contact_title,
+    address       = this.address,
+    city          = this.city,
+    region_name   = this.region_name,
+    postal_code   = this.postal_code,
+    country       = this.country,
+    phone         = this.phone,
+    fax           = this.fax,
+    home_page     = this.home_page;
+}
+
+Northwind.add_region(id: Nat, description: String) {
+  insert region(:region_id(this.id))
+    description = this.description;
+}
+
+Northwind.add_territory(id: Nat, description: String, region: Nat) {
+  insert territory(:territory_id(this.id))
+    description = this.description,
+    region_id   = :region_id(this.region);
+}
+
+Northwind.add_shipper(id: Nat, company_name: String, phone: String) {
+  insert shipper(:shipper_id(this.id))
+    company_name = this.company_name,
+    phone        = this.phone;
+}
+
+type AddCustomerMsg = add_customer(
+  id            : String,
+  company_name  : String,
+  contact_name  : String,
+  contact_title : String,
+  address       : String,
+  city          : String,
+  region_name   : String,
+  postal_code   : String,
+  country       : String,
+  phone         : String,
+  fax           : String
+);
+
+Northwind.AddCustomerMsg {
+  insert customer(:customer_id(this.id))
+    company_name  = this.company_name,
+    contact_name  = this.contact_name,
+    contact_title = this.contact_title,
+    address       = this.address,
+    city          = this.city,
+    region_name   = this.region_name,
+    postal_code   = this.postal_code,
+    country       = this.country,
+    phone         = this.phone,
+    fax           = this.fax;
+}
+
+type AddEmployeeMsg = add_employee (
+  id                : Nat,
+  last_name         : String,
+  first_name        : String,
+  title             : String,
+  title_of_courtesy : String,
+  birth_date        : Date,
+  hire_date         : Date,
+  address           : String,
+  city              : String,
+  region_name       : String,
+  postal_code       : String,
+  country           : String,
+  home_phone        : String,
+  extension         : String,
+  notes             : String,
+  reports_to        : Nat?,
+  photo_path        : String,
+  salary            : Float
+);
+
+Northwind.AddEmployeeMsg {
+  insert employee(:employee_id(this.id))
+    last_name         = this.last_name,
+    first_name        = this.first_name,
+    title             = this.title,
+    title_of_courtesy = this.title_of_courtesy,
+    birth_date        = this.birth_date,
+    hire_date         = this.hire_date,
+    address           = this.address,
+    city              = this.city,
+    region_name       = this.region_name,
+    postal_code       = this.postal_code,
+    country           = this.country,
+    home_phone        = this.home_phone,
+    extension         = this.extension,
+    notes             = this.notes,
+    reports_to        = :employee_id(this.reports_to) if this.reports_to?,
+    photo_path        = this.photo_path,
+    salary            = this.salary;
+}
+
+Northwind.set_reports_to(map: [Nat -> Nat]) {
+  for e_id m_id <- this.map
+    insert reports_to(:employee_id(e_id), :employee_id(m_id));
+}
+
+Northwind.assign_territory(employee_id: Nat, territory_id: Nat) {
+  insert employee_territory(:employee_id(this.employee_id), :territory_id(this.territory_id));
+}
+
+type AddProductMsg = add_product(
+  id:                Nat,
+  product_name:      String,
+  supplier_id:       Nat,
+  category_id:       Nat,
+  quantity_per_unit: String,
+  unit_price:        Float,
+  units_in_stock:    Nat,
+  units_on_order:    Nat,
+  reorder_level:     Nat,
+  discontinued:      Bool
+);
+
+Northwind.AddProductMsg {
+  insert product(:product_id(this.id))
+    product_name      = this.product_name,
+    supplier_id       = :supplier_id(this.supplier_id),
+    category_id       = :category_id(this.category_id),
+    quantity_per_unit = this.quantity_per_unit,
+    unit_price        = this.unit_price,
+    units_in_stock    = this.units_in_stock,
+    units_on_order    = this.units_on_order,
+    reorder_level     = this.reorder_level,
+    discontinued      = this.discontinued;
+}
+
+type AddOrderMsg = add_order(
+  id:               Nat,
+  customer_id:      String,
+  employee_id:      Nat,
+  order_date:       Date,
+  required_date:    Date,
+  shipped_date:     Date?,
+  ship_via:         Nat,
+  freight:          Float,
+  ship_name:        String,
+  ship_address:     String,
+  ship_city:        String,
+  ship_region:      String,
+  ship_postal_code: String,
+  ship_country:     String
+);
+
+Northwind.AddOrderMsg {
+  insert order(:order_id(this.id))
+    customer_id      = :customer_id(this.customer_id),
+    employee_id      = :employee_id(this.employee_id),
+    order_date       = this.order_date,
+    required_date    = this.required_date,
+    shipped_date     = this.shipped_date if this.shipped_date?,
+    ship_via         = :shipper_id(this.ship_via),
+    freight          = this.freight,
+    ship_name        = this.ship_name,
+    ship_address     = this.ship_address,
+    ship_city        = this.ship_city,
+    ship_region      = this.ship_region,
+    ship_postal_code = this.ship_postal_code,
+    ship_country     = this.ship_country;
+}
+
+type AddOrderDetailMsg = add_order_detail(
+  order_id:        Nat,
+  product_id:      Nat,
+  item_unit_price: Float,
+  quantity:        Nat,
+  discount:        Float
+);
+
+Northwind.AddOrderDetailMsg {
+  insert order_detail(:order_id(this.order_id), :product_id(this.product_id))
+    item_unit_price = this.item_unit_price,
+    quantity        = this.quantity,
+    discount        = this.discount;
+}

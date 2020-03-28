@@ -1,0 +1,152 @@
+type TaggedInt  = <+>(Int);
+type Value      = Int, Float, String, TaggedInt, Maybe[<Float, String>];
+
+type Table      = Value**;
+
+type ReportItem = Value*,
+                  (Value, Report),
+                  (Value, Value, Report),
+                  (Value, Value, Value, Report),
+                  (Value, Value, Value, Value, Report),
+                  (Value, Value, Value, Value, Value, Report),
+                  (Value, Value, Value, Value, Value, Value, Report),
+                  (Value, Value, Value, Value, Value, Value, Value, Report);
+
+type Report     = ReportItem*;
+
+////////////////////////////////////////////////////////////////////////////////
+
+type Widths = Nat*, (Nat+, Widths);
+
+
+Widths widths(Report report) {
+  return () if report == ();
+  max_width = max((|e| - if e != () and e(|e|-1) :: Value then 0 else 1 : e <- report));
+
+  top_widths = (
+    max(({
+      f = get(e, i, nothing);
+      return if f :: Value then width(f) else 0;
+    } : e <- report))
+    : i < max_width
+  );
+
+  subwidths = ();
+  for entry <- report
+    if entry != () {
+      last = entry(|entry| - 1);
+      if last :: Report
+        subwidths = (subwidths | widths(last));
+    }
+
+  return if subwidths != ()
+    then (nonempty(top_widths), fold(subwidths, merge))
+    else top_widths;
+
+
+  Widths merge(Widths ws1, Widths ws2) {
+    return ws1 if ws2 == ();
+    return ws2 if ws1 == ();
+    if ws1 :: Nat* and ws2 :: Nat*
+      return maxs(ws1, ws2);
+    fail if not ws1 :: (Nat+, Widths) or not ws2 :: (Nat+, Widths);
+    return (nonempty(maxs(ws1(0), ws2(0))), merge(ws1(1), ws2(1)));
+  }
+
+  Nat* maxs(Nat* ns1, Nat* ns2) = (max(get(ns1, i, 0), get(ns2, i, 0)) : i < max(|ns1|, |ns2|));
+}
+
+
+String* format(Report report) = (strip_right(s) : s <- format(report, 0, widths(report)));
+
+
+String* format(Report report, Nat indentation, Widths widths) {
+  top_widths : Nat*;
+  subwidths  : Widths;
+
+  if widths :: Nat* {
+    top_widths = widths;
+    subwidths = ();
+  }
+  else {
+    top_widths, subwidths = match (widths)
+      (ts?, () sws?) = widths;
+  }
+
+  lines = ();
+
+  for entry <- report {
+    line = indentation * "  ";
+    for field @ i <- entry
+      if field :: Value {
+        line = line & "  " if i > 0;
+        line = line & format(field, top_widths(i));
+        if i == |entry| - 1
+          lines = (lines | line);
+      }
+      else {
+        subreports = match (field)
+          ()  = field;
+        assert i == |entry| - 1;
+        lines = (lines | line);
+        lines = lines & format(subreports, nat(indentation + 1), subwidths);
+      }
+  }
+
+  return lines;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+String format(Nothing, Nat width) = width * " ";
+
+String format(Int n, Nat width) = left_padded(_print_(n), width);
+// String format(String s, Nat width) = right_padded(s, width);
+
+String format(Float x, Nat width) {
+  if x >= 0 {
+    rounded = _round_(x + 0.005);
+    decimals = _round_(100 * (x - rounded + 0.005));
+    dec_str = left_padded(_print_(decimals), 2, `0`);
+    assert length(dec_str) == 2;
+    return left_padded(_print_(rounded) & "." & dec_str, width);
+  }
+  else
+    return "-" & format(-x, nat(width-1));
+}
+
+String format(<TaggedInt, String, Just[<Float, String>]>, Nat width) =
+  string(()) s? = right_padded(s, width),
+  date()     d? = format_date(d, width),
+  just(x?)      = format(x, width),
+  t?(<*..*> n?) = format(n, width);
+
+String format_date(Date date, Nat width) {
+  year, month, day = year_month_day(date);
+  return format(year, 4) & "-" & format(month, 2) & "-" & format(day, 2);
+
+  String format(Int n, Nat w) = left_padded(_print_(n), w, `0`);
+}
+
+Nat width(Value v) = length(format(v, 0));
+
+////////////////////////////////////////////////////////////////////////////////
+
+String left_padded(String str, Nat min_len, Nat char) {
+  padded_str = str;
+  while length(padded_str) < min_len
+    padded_str = string((char)) & padded_str;
+  return padded_str;
+}
+
+
+String right_padded(String str, Nat min_len, Nat char) {
+  padded_str = str;
+  while length(padded_str) < min_len
+    padded_str = padded_str & string((char));
+  return padded_str;
+}
+
+
+String left_padded(String str, Nat min_len)  = left_padded(str, min_len, ` `);
+String right_padded(String str, Nat min_len) = right_padded(str, min_len, ` `);
